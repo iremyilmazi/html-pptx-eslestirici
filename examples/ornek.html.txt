@@ -1,0 +1,7 @@
+<!-- Gerçek dosyaların yerine şirket dışı örnek; kullanmak için .html adı verin -->
+<section class="source-section">
+  <p><strong>Stratejik Plan</strong><br>2027–2029</p>
+  <p>Operasyonel verimlilik</p>
+  <div class="table-scroll"><table><tr><th>Gösterge</th><th>Değer</th></tr><tr><td>Örnek</td><td>100</td></tr></table></div>
+  <h3>Dijital dönüşüm</h3>
+</section>
