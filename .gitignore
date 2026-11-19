@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+veri/
+cikti/
+*.pptx
+*.html
+*.htm
+*.csv
+*.xlsx
