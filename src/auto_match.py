@@ -52,30 +52,48 @@ def suggest(blocks, slots):
     n, m = len(blocks), len(slots)
     if not n or not m:
         return {}
-    if n * m > 4_000_000:
-        raise ValueError('Eşleştirme çok büyük (4 milyon üzeri aday). Dosyaları bölün.')
-    # DP with gap penalty for missing/extra HTML or slide slots.
-    prev = [j * -.65 for j in range(m + 1)]
-    moves = bytearray((n + 1) * (m + 1))
+    # For large inputs, follow a corridor around the proportional ordering.
+    # The minimum width lets neighboring rows overlap even with uneven lengths.
+    radius = m if n * m <= 4_000_000 else max(64, (m + n - 1) // n)
+    negative_infinity = float('-inf')
+    previous_start = 0
+    previous = [j * -.65 for j in range(min(m, radius) + 1)]
+    moves = [(0, bytearray())]
+
     for i, block in enumerate(blocks, 1):
-        cur = [i * -.65] + [0.] * m
-        moves[i * (m + 1)] = 1
-        for j, slot in enumerate(slots, 1):
-            score = compatibility(block, slot, (i - .5) / n, (j - .5) / m)
-            diag = prev[j - 1] + score
-            up = prev[j] - .65
-            left = cur[j - 1] - .65
+        center = i * m // n
+        start = max(0, center - radius)
+        end = min(m, center + radius)
+        current = [negative_infinity] * (end - start + 1)
+        directions = bytearray(len(current))
+        if start == 0:
+            current[0] = i * -.65
+            directions[0] = 1
+
+        for j in range(max(1, start), end + 1):
+            index = j - start
+            previous_index = j - previous_start
+            diag = negative_infinity
+            if 0 <= previous_index - 1 < len(previous):
+                score = compatibility(block, slots[j - 1], (i - .5) / n, (j - .5) / m)
+                diag = previous[previous_index - 1] + score
+            up = previous[previous_index] - .65 if 0 <= previous_index < len(previous) else negative_infinity
+            left = current[index - 1] - .65 if index else negative_infinity
             if diag >= up and diag >= left:
-                cur[j] = diag; moves[i * (m + 1) + j] = 3
+                current[index], directions[index] = diag, 3
             elif up >= left:
-                cur[j] = up; moves[i * (m + 1) + j] = 1
+                current[index], directions[index] = up, 1
             else:
-                cur[j] = left; moves[i * (m + 1) + j] = 2
-        prev = cur
+                current[index], directions[index] = left, 2
+
+        moves.append((start, directions))
+        previous_start, previous = start, current
+
     i, j = n, m
     matches = {}
     while i and j:
-        direction = moves[i * (m + 1) + j]
+        start, directions = moves[i]
+        direction = directions[j - start]
         if direction == 3:
             block, slot = blocks[i-1], slots[j-1]
             score = compatibility(block, slot, (i-.5)/n, (j-.5)/m)
