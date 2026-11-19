@@ -16,15 +16,16 @@ Bu proje, **çevirisi HTML dosyalarına dağılmış mevcut bir sunum** için g�
 
 1. Bilgisayarınıza Python 3.11 veya 3.12 kurun (kurum politikasına uyun). Kurulumda `Add Python to PATH` seçeneğini açın. Python zaten varsa yeniden kurmayın.
 2. Bu projeyi ZIP olarak indirin, örneğin `C:\html-pptx-eslestirici` klasörüne çıkarın.
-3. Windows Terminal veya PowerShell açın:
+3. Windows Komut İstemi’ni (CMD) açın. Proje klasörüne geçin. Sanal ortamınız zaten etkinse `py -3 -m venv .venv` ve etkinleştirme adımlarını atlayıp bağımlılıkları kurun.
 
-   ```powershell
-   cd C:\html-pptx-eslestirici
+   ```cmd
+   cd /d "C:\html-pptx-eslestirici"
    py -3 -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   .venv\Scripts\activate.bat
+   python -m pip install -r requirements.txt
    ```
 
-   **Sanal ortam etkinleştirmeye gerek yoktur.** Her komut `.venv\Scripts\python.exe` üzerinden çalışır. PowerShell'in `Activate.ps1` yürütme ilkesiyle uğraşmanız gerekmez.
+   CMD satırının başında `(.venv)` görünüyorsa sanal ortam etkindir. Yeni bir CMD penceresi açarsanız proje klasörüne geçip `.venv\Scripts\activate.bat` komutunu tekrar çalıştırın.
 
 4. Aynı klasörde `veri` adında bir klasör oluşturun. Sunumu ve HTML dosyalarını bu klasöre koyun:
 
@@ -43,8 +44,8 @@ Bu proje, **çevirisi HTML dosyalarına dağılmış mevcut bir sunum** için g�
 
 5. Envanter ve eşleştirme şablonunu üretin:
 
-   ```powershell
-   .\.venv\Scripts\python.exe src\main.py hazirla --pptx "veri\orijinal.pptx" --html-dir "veri\html" --output "cikti"
+   ```cmd
+   python src\main.py hazirla --pptx "veri\orijinal.pptx" --html-dir "veri\html" --output "cikti"
    ```
 
 6. `cikti\pptx_envanter.csv` dosyasını Excel ile açın: Slayt numarası (`slide`), metin kutusu kimliği (`shape_id`), türü ve orijinal metin listelenir. `cikti\html_bloklar.csv` tüm çeviri bloklarını listeler.
@@ -53,8 +54,8 @@ Bu proje, **çevirisi HTML dosyalarına dağılmış mevcut bir sunum** için g�
 
 8. Onaylanmış metin kutularını güncelleyin:
 
-   ```powershell
-   .\.venv\Scripts\python.exe src\main.py uygula --pptx "veri\orijinal.pptx" --mapping "cikti\eslestirme_sablonu.csv" --output "cikti\cevrilmis.pptx"
+   ```cmd
+   python src\main.py uygula --pptx "veri\orijinal.pptx" --mapping "cikti\eslestirme_sablonu.csv" --output "cikti\cevrilmis.pptx"
    ```
 
 9. Oluşan dosyayı PowerPoint'te açıp özellikle uzun metin, font, satır atlaması, grafik, animasyon ve tabloları kontrol edin.
@@ -81,7 +82,7 @@ HTML tablo hücreleri ayrı `table_cell` satırlarına ayrılır. Envanterde tab
 
 `py tanınmıyor`: `python --version` komutunu deneyin; Python kurulumunu ve PATH'i kontrol edin.
 
-`ModuleNotFoundError`: `pip` komutu yerine yukarıdaki `.venv\Scripts\python.exe -m pip ...` komutunu kullanın.
+`ModuleNotFoundError`: `pip` komutu yerine yukarıdaki `python -m pip install -r requirements.txt` komutunu kullanın.
 
 `PermissionError`: Sunumu PowerPoint'te kapatın veya başka bir çıktı dosya adı seçin.
 
@@ -101,8 +102,8 @@ HTML tablo hücreleri ayrı `table_cell` satırlarına ayrılır. Envanterde tab
 
 `hazirla` komutunu çalıştırdıktan sonra şu komutu yazın:
 
-```powershell
-.\.venv\Scripts\python.exe src\gui.py --mapping "cikti\eslestirme_sablonu.csv" --inventory "cikti\pptx_envanter.csv"
+```cmd
+python src\gui.py --mapping "cikti\eslestirme_sablonu.csv" --inventory "cikti\pptx_envanter.csv"
 ```
 
 - **Filtre:** Onaysız, düşük/eşleşmedi, orta, yüksek ve onaylı satırları filtreleyin.
@@ -114,15 +115,17 @@ HTML tablo hücreleri ayrı `table_cell` satırlarına ayrılır. Envanterde tab
 - **Onayla:** Satırın `apply` alanına EVET yazar; `Onayı kaldır` geri alır.
 - **Kaydet (Ctrl+S):** CSV'yi UTF-8 BOM ve `;` ayracıyla kaydeder.
 
-Arayüzdeki tüm dosya işlemleri bilgisayarınızda yapılır. `tkinter` genellikle resmi Windows Python kurulumuyla gelir. Hata alırsanız `py -3 -m tkinter` komutuyla test edin.
+Arayüzdeki tüm dosya işlemleri bilgisayarınızda yapılır. `tkinter` genellikle resmi Windows Python kurulumuyla gelir. Hata alırsanız `python -m tkinter` komutuyla test edin.
 
 ### Tam akış
 
-```powershell
-cd C:\html-pptx-eslestirici
-.\.venv\Scripts\python.exe src\main.py hazirla --pptx "veri\orijinal.pptx" --html-dir "veri\html" --output "cikti"
-.\.venv\Scripts\python.exe src\gui.py --mapping "cikti\eslestirme_sablonu.csv" --inventory "cikti\pptx_envanter.csv"
-.\.venv\Scripts\python.exe src\main.py uygula --pptx "veri\orijinal.pptx" --mapping "cikti\eslestirme_sablonu.csv" --output "cikti\cevrilmis.pptx"
+Bu komutları sanal ortam etkinken CMD’de çalıştırın.
+
+```cmd
+cd /d "C:\html-pptx-eslestirici"
+python src\main.py hazirla --pptx "veri\orijinal.pptx" --html-dir "veri\html" --output "cikti"
+python src\gui.py --mapping "cikti\eslestirme_sablonu.csv" --inventory "cikti\pptx_envanter.csv"
+python src\main.py uygula --pptx "veri\orijinal.pptx" --mapping "cikti\eslestirme_sablonu.csv" --output "cikti\cevrilmis.pptx"
 ```
 
 **Mutlaka kontrol edin:** Çevirisi farklı dilde olan uzun bloklarda otomatik hizalama yanlış yapabilir. Aynı slayttaki bir metin kutusu birden çok HTML paragrafa karşılık geliyorsa bu sürüm bunları otomatik birleştirmez. PDF, SmartArt, grafik gömülü etiketleri ve grup içi metin kutuları işlenmez. Uzun metinlerin taşma kontrolü PowerPoint'te gereklidir.
