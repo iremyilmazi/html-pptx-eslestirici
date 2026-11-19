@@ -2,7 +2,29 @@
 
 Bu proje, **çevirisi HTML dosyalarına dağılmış mevcut bir sunum** için güvenli bir eşleştirme iş akışı sağlar. Orijinal PPTX'i yeniden tasarlamaz; seçilen metin kutularının yazısını değiştirir. Tüm işlemler bilgisayarınızda gerçekleşir. **Dosyalar hiçbir sunucuya gönderilmez.**
 
-> **Önemli:** HTML'de slayt sınırları veya orijinal kaynak metin eşleştirmesi yoksa otomatik, hatasız slayt/metin eşleştirmesi garanti edilemez. Bu nedenle güvenli varsayılan **manuel onay**dır. `suggested_*` sütunları otomatik hizalama önerileridir; doğrulama olmadan uygulanmamalıdır.
+## Otomatik kullanım (Windows CMD)
+
+HTML çevirilerini `veri\html` klasörüne, kaynak PowerPoint dosyanızı `veri\orijinal.pptx` yoluna koyun. Aracı elle kopyaladıysanız güncel `src\main.py`, `src\smart_match.py`, `src\local_embeddings.py` ve `requirements-otomatik.txt` dosyalarını ekleyin. Önceki `src\auto_match.py` ve `requirements.txt` dosyaları da gerekli.
+
+Proje klasöründe, sanal ortam etkinken ilk seferde aşağıdaki iki komutu çalıştırın. İnternet bağlantısı paketleri ve herkese açık eşleştirme modelini indirmek için kullanılır. İndirme komutu HTML veya PPTX dosyalarınızı okumaz.
+
+```cmd
+python -m pip install -r requirements-otomatik.txt
+python src\local_embeddings.py
+```
+
+Her sunum için aşağıdaki komutu çalıştırın. Eşleştirme ve PowerPoint işlemleri yerel modelle, internet bağlantısı olmadan yapılabilir.
+
+```cmd
+python src\main.py otomatik --pptx "veri\orijinal.pptx" --html-dir "veri\html" --output "cikti_otomatik"
+```
+
+- `cikti_otomatik\cevrilmis.pptx` güvenilir bulunan eşleşmeleri içerir. Orijinal sunum korunur. Hiçbir eşleşme güvenli bulunmazsa yalnızca CSV dosyaları üretilir.
+- `cikti_otomatik\kontrol_gerekenler.csv` uygulanmayan HTML bloklarını listeler. Dilerseniz `eslestirme_sablonu.csv` dosyasını kontrol ekranında **Onaysız** filtresiyle açıp bu bloklara hedef atayabilirsiniz. Ardından `uygula` komutunu orijinal sunum, güncel şablon ve bir çıktı dosyasıyla çalıştırın.
+- `eslestirme_sablonu.csv` içindeki `apply=EVET` satırları otomatik uygulanan eşleşmelerdir. Hedefi daha sonra değiştirirseniz `uygula` komutuna orijinal PPTX'i verin.
+- `--output` için yeni bir klasör adı kullanın. Örneğin ikinci denemede `cikti_otomatik_2` seçin. Böylece önceki çıktılar ve düzeltmeler korunur.
+
+Araç iki dildeki metinlerin anlamını ve sayılarını karşılaştırır. Birden çok benzer hedef bulunduğunda temkinli davranır. Tablolarda satır ve sütun düzeni, dolu hücre konumları ve hücre içerikleri de uyuşmalıdır. Birleştirilmiş veya yapısı değişmiş tablolar kontrol raporuna kalabilir. Otomatik eşleştirme kusursuzluk garantisi vermez. Çıktıyı PowerPoint'te açıp özellikle sayı, tablo ve metin taşmalarını kontrol edin.
 
 ## Desteklenen HTML yapıları
 
@@ -12,7 +34,7 @@ Bu proje, **çevirisi HTML dosyalarına dağılmış mevcut bir sunum** için g�
 - `<div class="table-scroll"><table>...</table></div>` içindeki her tablo hücresi ayrı `table_cell` olarak envantere alınır.
 - Üç veya daha fazla `.html` / `.htm` dosyası, **dosya adına göre alfabetik sıralanarak** işlenir. Dosyaları `01_`, `02_`, `03_` şeklinde adlandırın.
 
-## Windows 11 – adım adım kurulum
+## Windows 11 – kurulum ve manuel onay akışı
 
 1. Bilgisayarınıza Python 3.11 veya 3.12 kurun (kurum politikasına uyun). Kurulumda `Add Python to PATH` seçeneğini açın. Python zaten varsa yeniden kurmayın.
 2. Bu projeyi ZIP olarak indirin, örneğin `C:\html-pptx-eslestirici` klasörüne çıkarın.

@@ -3,10 +3,12 @@ import argparse
 import csv
 import re
 import sys
+from tempfile import TemporaryDirectory
 from pathlib import Path
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup
 from pptx import Presentation
 from auto_match import flat_slots, suggest
+from local_embeddings import DEFAULT_MODEL_DIR, encode_texts
 
 FIELDS = ['html_id','html_file','html_type','translation','suggested_slide','suggested_shape_id','suggested_target','confidence','match_score','target_slide','target_shape_id','target_row','target_col','apply','note']
 
@@ -22,6 +24,7 @@ def html_text(tag):
 
 def parse_html(files):
     blocks=[]
+    table_number = 0
     for path in files:
         soup=BeautifulSoup(Path(path).read_text(encoding='utf-8-sig'), 'html.parser')
         root=soup.body or soup
@@ -30,12 +33,22 @@ def parse_html(files):
             if tag.find_parent('table') and tag.name!='table':
                 continue
             if tag.name=='table':
-                for ri,tr in enumerate(tag.find_all('tr'),1):
-                    for ci,cell in enumerate(tr.find_all(['td','th'],recursive=False),1):
+                table_number += 1
+                table_rows = [row.find_all(['td', 'th'], recursive=False)
+                              for row in tag.find_all('tr') if row.find_parent('table') is tag]
+                column_counts = {len(row) for row in table_rows}
+                rectangular = (len(column_counts) == 1 and not tag.find_parent('table')
+                               and not tag.find('table') and all(
+                    cell.get('rowspan', '1') == '1' and cell.get('colspan', '1') == '1'
+                    for row in table_rows for cell in row))
+                for ri,row in enumerate(table_rows,1):
+                    for ci,cell in enumerate(row,1):
                         value=html_text(cell)
                         if value:
                             blocks.append({'html_id':f'H{len(blocks)+1:04}', 'html_file':Path(path).name,
                                            'html_type':'table_cell','translation':value,
+                                           'source_table':table_number if rectangular else None,
+                                           'source_rows':len(table_rows), 'source_cols':len(row),
                                            'source_row':ri,'source_col':ci})
                 continue
             value=html_text(tag)
@@ -66,21 +79,34 @@ def read_csv(path):
     with open(path,encoding='utf-8-sig',newline='') as f:
         return list(csv.DictReader(f,delimiter=';'))
 
-def command_prepare(args):
-    out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    htmls=sorted(Path(args.html_dir).glob('*.html'))+sorted(Path(args.html_dir).glob('*.htm'))
+def read_inputs(pptx, html_dir):
+    htmls=sorted(path for path in Path(html_dir).iterdir()
+                 if path.is_file() and path.suffix.lower() in {'.html', '.htm'})
     if not htmls: raise ValueError('HTML klasöründe .html veya .htm bulunamadı.')
     blocks=parse_html(htmls)
-    prs, slots=slides_inventory(args.pptx)
+    prs, slots=slides_inventory(pptx)
+    return blocks, prs, slots
+
+
+def write_inventory(out, slots, blocks):
     write_csv(out/'pptx_envanter.csv',['slide','shape_id','kind','text'],slots)
     write_csv(out/'html_bloklar.csv',['html_id','html_file','html_type','translation'],blocks)
-    # Sıra, rakam, uzunluk ve içerik benzerliğini kullanır. Güven skoru olasılık değildir.
-    auto_slots=flat_slots(prs)
-    candidates=suggest(blocks,auto_slots)
+
+
+def mapping_rows(blocks, candidates, automatic=False):
     template=[]
     for idx,b in enumerate(blocks):
         info=candidates.get(idx)
         suggestion, confidence, score=info if info else (None,'eslesmedi','')
+        approved = automatic and suggestion is not None
+        if approved:
+            note = 'Otomatik uygulandı'
+        elif suggestion:
+            note = 'Otomatik öneri; kontrol edip onaylayın'
+        elif automatic:
+            note = 'Güvenilir tek hedef bulunamadı; uygulanmadı'
+        else:
+            note = 'Hedef bulunamadı'
         template.append({**b,
                          'suggested_slide':suggestion['slide'] if suggestion else '',
                          'suggested_shape_id':suggestion['shape_id'] if suggestion else '',
@@ -90,7 +116,16 @@ def command_prepare(args):
                          'target_shape_id':suggestion['shape_id'] if suggestion else '',
                          'target_row':suggestion['row'] if suggestion else '',
                          'target_col':suggestion['col'] if suggestion else '',
-                         'apply':'','note':('Otomatik öneri; kontrol edip onaylayın' if suggestion else 'Hedef bulunamadı')})
+                         'apply':'EVET' if approved else '', 'note':note})
+    return template
+
+
+def command_prepare(args):
+    blocks, prs, slots = read_inputs(args.pptx, args.html_dir)
+    out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
+    write_inventory(out, slots, blocks)
+    # Sıra, rakam, uzunluk ve içerik benzerliğini kullanır. Güven skoru olasılık değildir.
+    template = mapping_rows(blocks, suggest(blocks, flat_slots(prs)))
     write_csv(out/'eslestirme_sablonu.csv',FIELDS,template)
     print(f'{len(prs.slides)} slayt, {len(slots)} metin/tablo alanı, {len(blocks)} HTML bloğu.')
     print('Öneri oluşturuldu; hiçbir eşleşme otomatik ONAYLANMAZ. gui.py ile inceleyin veya CSV apply=EVET girin.')
@@ -115,6 +150,10 @@ def replace_text_preserve(shape, new_text):
 def command_apply(args):
     rows=read_csv(args.mapping)
     prs,slots=slides_inventory(args.pptx)
+    return apply_rows(prs, slots, rows, args.output)
+
+
+def apply_rows(prs, slots, rows, output, quiet=False):
     targets={(s['slide'],s['shape_id']):s for s in slots}
     updated=set(); errors=[]; applied=0
     for n,row in enumerate(rows,2):
@@ -147,15 +186,55 @@ def command_apply(args):
             updated.add((key,row.get('target_row',''),row.get('target_col','')));applied+=1
         except Exception as e:errors.append(f'Satır {n} ({row.get("html_id", "?")}): {e}')
     if errors:
-        report=Path(args.output).with_suffix('.hatalar.txt');report.parent.mkdir(parents=True,exist_ok=True)
+        if quiet:
+            raise ValueError('Otomatik hedef doğrulaması başarısız. ' + errors[0])
+        report=Path(output).with_suffix('.hatalar.txt');report.parent.mkdir(parents=True,exist_ok=True)
         report.write_text('\n'.join(errors),encoding='utf-8')
         print(f'{len(errors)} sorun bulundu: {report}',file=sys.stderr)
         # Hata varsa sunum kaydedilmez; kısmi yazma yapılmaz.
         return 2
-    Path(args.output).parent.mkdir(parents=True,exist_ok=True)
-    prs.save(args.output)
-    print(f'{applied} metin alanı güncellendi -> {args.output}')
-    print('PowerPoint üzerinde taşma, yazı biçimi ve animasyonları gözle kontrol edin.')
+    Path(output).parent.mkdir(parents=True,exist_ok=True)
+    prs.save(output)
+    if not quiet:
+        print(f'{applied} metin alanı güncellendi -> {output}')
+        print('PowerPoint üzerinde taşma, yazı biçimi ve animasyonları gözle kontrol edin.')
+    return 0
+
+
+def command_automatic(args):
+    from smart_match import suggest_automatic
+
+    out = Path(args.output).resolve()
+    if out.exists():
+        raise ValueError(f'Çıktı klasörü zaten var: {out}. --output ile yeni bir klasör adı verin.')
+    blocks, prs, inventory = read_inputs(args.pptx, args.html_dir)
+    slots = flat_slots(prs)
+    candidates = {}
+    if blocks and slots:
+        print(f'{len(blocks)} HTML bloğu ve {len(slots)} PowerPoint alanı yerel modelle karşılaştırılıyor…', flush=True)
+        texts = [block['translation'] for block in blocks] + [slot['text'] for slot in slots]
+        vectors = encode_texts(texts, args.model_dir)
+        candidates = suggest_automatic(blocks, slots, vectors[:len(blocks)], vectors[len(blocks):])
+
+    rows = mapping_rows(blocks, candidates, automatic=True)
+    review = [row for row in rows if not row['apply']]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=out.parent, prefix='.eslestirme-') as temporary:
+        staging = Path(temporary) / 'sonuc'
+        staging.mkdir()
+        if candidates:
+            apply_rows(prs, inventory, rows, staging / 'cevrilmis.pptx', quiet=True)
+        write_inventory(staging, inventory, blocks)
+        write_csv(staging / 'eslestirme_sablonu.csv', FIELDS, rows)
+        write_csv(staging / 'kontrol_gerekenler.csv', FIELDS, review)
+        staging.rename(out)
+
+    print(f'{len(candidates)} otomatik uygulandı, {len(review)} blok kontrol bekliyor.')
+    print(f'Kontrol raporu: {out / "kontrol_gerekenler.csv"}')
+    if candidates:
+        print(f'Çevrilmiş sunum: {out / "cevrilmis.pptx"}')
+    else:
+        print('Güvenilir eşleşme bulunamadığı için PPTX oluşturulmadı.')
     return 0
 
 def main(argv=None):
@@ -163,6 +242,12 @@ def main(argv=None):
     sub=ap.add_subparsers(dest='cmd',required=True)
     p=sub.add_parser('hazirla');p.add_argument('--pptx',required=True);p.add_argument('--html-dir',required=True);p.add_argument('--output',default='cikti');p.set_defaults(func=command_prepare)
     p=sub.add_parser('uygula');p.add_argument('--pptx',required=True);p.add_argument('--mapping',required=True);p.add_argument('--output',default='cikti/cevrilmis.pptx');p.set_defaults(func=command_apply)
+    p = sub.add_parser('otomatik', help='Güvenilir eşleşmeleri tek komutta uygula')
+    p.add_argument('--pptx', required=True)
+    p.add_argument('--html-dir', required=True)
+    p.add_argument('--output', default='cikti_otomatik')
+    p.add_argument('--model-dir', type=Path, default=DEFAULT_MODEL_DIR)
+    p.set_defaults(func=command_automatic)
     args=ap.parse_args(argv)
     try:return args.func(args)
     except Exception as e:print('HATA:',e,file=sys.stderr);return 1

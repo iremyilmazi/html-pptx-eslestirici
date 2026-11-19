@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 veri/
 cikti/
+/cikti_otomatik*/
+/modeller/
 *.pptx
 *.html
 *.htm
